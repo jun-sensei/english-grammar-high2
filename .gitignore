@@ -1,0 +1,18 @@
+# APIキー・環境変数
+.env
+*.env
+config.local.js
+
+# Pythonキャッシュ
+__pycache__/
+*.pyc
+*.pyo
+
+# PDFファイル（著作権保護のためGitHubには上げない）
+*.pdf
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
