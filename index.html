@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高校英語 小テスト作成アプリ</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="questions.js"></script>
+<style>
+  body { font-family: 'Hiragino Kaku Gothic Pro', 'メイリオ', sans-serif; }
+
+  /* ===== 印刷スタイル ===== */
+  @media print {
+    .no-print { display: none !important; }
+    .print-only { display: block !important; }
+    body { background: white; margin: 0; padding: 0; }
+    #tab-generate-content { max-width: none; padding: 0; margin: 0; }
+    .print-page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 15mm 15mm 15mm 20mm;
+      margin: 0;
+      box-sizing: border-box;
+      page-break-after: always;
+    }
+    .print-page:last-child { page-break-after: avoid; }
+  }
+  @media screen {
+    .print-only { display: none; }
+    .print-page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 15mm 15mm 15mm 20mm;
+      margin: 20px auto;
+      background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-sizing: border-box;
+    }
+  }
+
+  .print-page h1 { font-size: 15pt; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 10px; }
+  .print-page .meta { font-size: 9pt; color: #333; margin-bottom: 8px; }
+  .print-page .question-block { margin-bottom: 16px; page-break-inside: avoid; }
+  .print-page .question-text { font-size: 10.5pt; font-weight: bold; margin-bottom: 4px; line-height: 1.6; }
+  .print-page .choices { font-size: 10pt; margin-left: 16px; line-height: 1.8; }
+  .print-page .answer-line { border-bottom: 1px solid #666; min-width: 100px; height: 28px; display: inline-block; margin-left: 8px; vertical-align: bottom; }
+  .print-page .fill-box { border-bottom: 2px solid #000; display: inline-block; width: 120px; vertical-align: bottom; margin: 0 4px; }
+  .print-page .name-box { border: 1px solid #000; width: 120px; height: 28px; display: inline-block; vertical-align: middle; }
+  .print-page .score-box { border: 1px solid #000; width: 60px; height: 28px; display: inline-block; vertical-align: middle; text-align: center; line-height: 28px; }
+  .print-page .date-box { border-bottom: 1px solid #000; width: 100px; display: inline-block; }
+
+  .answer-sheet .answer-item { margin-bottom: 10px; padding: 6px 8px; border-left: 3px solid #333; page-break-inside: avoid; }
+  .answer-sheet .answer-item .ans { font-weight: bold; color: #065f46; }
+  .answer-sheet .answer-item .exp { font-size: 9.5pt; color: #333; margin-top: 2px; }
+
+  .unit-label { font-size: 8.5pt; color: #555; background: #ecfdf5; display: inline-block; padding: 1px 8px; border-radius: 4px; margin-bottom: 3px; border-left: 3px solid #059669; }
+  @media print {
+    .unit-label { color: #000; background: transparent; border: 1px solid #666; border-left: 3px solid #000; }
+    .answer-sheet .answer-item .ans { color: #000; }
+  }
+
+  /* ===== UI パーツ ===== */
+  .tab-btn.active { background: #059669; color: white; }
+  .unit-chip { cursor: pointer; border: 2px solid #94a3b8; border-radius: 9999px; padding: 8px 14px; font-size: 13px; transition: all 0.15s; user-select: none; display: inline-flex; align-items: center; min-height: 36px; }
+  .unit-chip.selected { border-color: #059669; background: #d1fae5; color: #065f46; }
+  .cat-label { font-size: 11px; font-weight: bold; color: #64748b; margin-top: 8px; margin-bottom: 4px; }
+
+  .student-row:hover { background: #f1f5f9; }
+  .weak-bar { height: 20px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+  .weak-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+
+  select, input[type="text"], input[type="password"], textarea {
+    border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px;
+  }
+  .btn { padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; border: none; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #059669; color: white; }
+  .btn-secondary { background: #64748b; color: white; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-success { background: #0891b2; color: white; }
+  .btn-outline { background: white; border: 2px solid #059669; color: #059669; }
+  .card { background: white; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.1); padding: 20px; }
+
+  .ai-generating { opacity: 0.6; pointer-events: none; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- TOP NAV -->
+<nav class="bg-emerald-900 text-white px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 no-print">
+  <div class="font-bold text-base sm:text-lg whitespace-nowrap">高校英語 小テスト作成アプリ</div>
+  <div class="flex flex-wrap gap-1.5 text-sm">
+    <button onclick="showTab('generate')" id="tab-generate" class="tab-btn px-4 py-1.5 rounded-full">問題作成</button>
+    <button onclick="showTab('ai')" id="tab-ai" class="tab-btn px-4 py-1.5 rounded-full">AI問題生成</button>
+    <button onclick="showTab('score')" id="tab-score" class="tab-btn px-4 py-1.5 rounded-full">採点入力</button>
+    <button onclick="showTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 py-1.5 rounded-full">成績ダッシュボード</button>
+    <button onclick="showTab('students')" id="tab-students" class="tab-btn px-4 py-1.5 rounded-full">生徒管理</button>
+    <button onclick="showTab('settings')" id="tab-settings" class="tab-btn px-4 py-1.5 rounded-full">設定</button>
+  </div>
+</nav>
+
+<!-- ==================== TAB: 問題作成 ==================== -->
+<div id="tab-generate-content" class="tab-content max-w-4xl mx-auto p-6">
+  <div class="card mb-4 no-print">
+    <h2 class="font-bold text-lg mb-4 text-emerald-900">テスト設定</h2>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1" for="sel-difficulty">難易度</label>
+        <select id="sel-difficulty" class="w-full">
+          <option value="1">基礎</option>
+          <option value="2" selected>標準</option>
+          <option value="3">発展</option>
+          <option value="0">全難易度</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1" for="sel-count">問題数</label>
+        <select id="sel-count" class="w-full">
+          <option value="5">5問</option>
+          <option value="10" selected>10問</option>
+          <option value="15">15問</option>
+          <option value="20">20問</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="block text-sm font-semibold mb-1">問題タイプ</label>
+      <div class="flex gap-4 flex-wrap">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="type-mc" checked class="accent-emerald-600"> <span class="text-sm">選択肢問題</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="type-spell" checked class="accent-emerald-600"> <span class="text-sm">語彙スペリング</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="type-fill" checked class="accent-emerald-600"> <span class="text-sm">空欄補充</span>
+        </label>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">出題範囲 <span class="text-slate-400 font-normal">（複数選択可）</span></label>
+      <div class="flex gap-3 mb-2 flex-wrap">
+        <button onclick="selectAllUnits()" class="text-xs text-emerald-700 underline">全選択</button>
+        <button onclick="clearAllUnits()" class="text-xs text-slate-500 underline">全解除</button>
+        <button onclick="selectByCat('grammar')" class="text-xs text-emerald-600 underline">文法のみ</button>
+        <button onclick="selectByCat('vocab')" class="text-xs text-teal-600 underline">語彙のみ</button>
+      </div>
+      <div id="unit-list"></div>
+    </div>
+  </div>
+
+  <div class="card mb-4 border-l-4 border-orange-400 bg-orange-50 no-print">
+    <div class="flex items-center gap-3 mb-2">
+      <label class="flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" id="weak-mode-toggle" onchange="toggleWeakMode()">
+        <span class="font-bold text-orange-700">弱点単元モード</span>
+      </label>
+      <span class="text-sm text-slate-500">正答率60%未満の単元のみで自動出題</span>
+    </div>
+    <div id="weak-student-area" class="hidden">
+      <label class="block text-sm font-semibold mb-1">対象の生徒を選択</label>
+      <select id="weak-student-sel" onchange="applyWeakUnits()" class="w-full mb-2"></select>
+      <div id="weak-units-info" class="hidden text-sm p-2 rounded bg-white border border-orange-200"></div>
+    </div>
+  </div>
+
+  <div class="card mb-4 no-print">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h2 class="font-bold text-lg text-emerald-900">問題生成</h2>
+      <div class="flex gap-2 items-center flex-wrap">
+        <label class="text-sm font-semibold">テスト名（任意）</label>
+        <input type="text" id="test-title" placeholder="例：高校英語 仮定法テスト" class="w-56 text-sm">
+      </div>
+    </div>
+    <button onclick="generateQuiz()" class="btn btn-primary w-full text-base py-3">問題を生成する</button>
+    <div id="gen-error" class="mt-3 text-sm text-red-600 hidden"></div>
+  </div>
+
+  <!-- A4プレビュー -->
+  <div id="preview-area" class="hidden">
+    <div class="mb-4 no-print">
+      <div class="flex gap-3 flex-wrap mb-2">
+        <button onclick="printProblems()" class="btn btn-primary">問題用紙を印刷</button>
+        <button onclick="printAnswers()" class="btn btn-outline">解答・解説用紙を印刷</button>
+      </div>
+      <div class="flex gap-3 flex-wrap items-center">
+        <button onclick="saveCurrentTest()" class="btn btn-success">採点用に保存</button>
+        <span class="text-xs text-slate-400">印刷後、採点タブで点数を入力できます</span>
+      </div>
+    </div>
+
+    <!-- 問題用紙 (A4) -->
+    <div id="problem-sheet" class="print-page">
+      <div class="flex justify-between items-start mb-2">
+        <h1 id="ps-title">高校英語 小テスト</h1>
+        <div style="text-align:right;font-size:9pt;line-height:1.8;">
+          日付：<span class="date-box" style="width:80px;">&nbsp;</span>
+          氏名：<span class="name-box"></span>
+          点数：<span class="score-box">　／<span id="ps-max"></span></span>
+        </div>
+      </div>
+      <div class="meta" id="ps-meta"></div>
+      <div id="ps-questions"></div>
+    </div>
+
+    <!-- 解答・解説用紙（印刷時のみ） -->
+    <div id="answer-sheet" class="print-page answer-sheet print-only">
+      <h1 id="as-title">高校英語 小テスト【解答・解説】</h1>
+      <div class="meta" id="as-meta"></div>
+      <div id="as-answers"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB: AI問題生成 ==================== -->
+<div id="tab-ai-content" class="tab-content hidden max-w-3xl mx-auto p-6 no-print">
+  <div class="card mb-4">
+    <h2 class="font-bold text-lg mb-1 text-emerald-900">AI問題生成（Gemini API）</h2>
+    <p class="text-sm text-slate-500 mb-4">Gemini APIを使って、選択した単元のオリジナル問題を生成します。生成した問題は問題バンクに追加して出題できます。</p>
+
+    <div id="ai-no-key" class="p-3 bg-amber-50 border border-amber-300 rounded-lg mb-4 text-sm text-amber-800">
+      APIキーが設定されていません。<button onclick="showTab('settings')" class="underline font-bold">設定タブ</button>でGemini APIキーを入力してください。
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1">生成する単元</label>
+        <select id="ai-unit" class="w-full">
+          <option value="">-- 単元を選択 --</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1">難易度</label>
+        <select id="ai-diff" class="w-full">
+          <option value="1">基礎</option>
+          <option value="2" selected>標準</option>
+          <option value="3">発展</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1">問題タイプ</label>
+        <select id="ai-type" class="w-full">
+          <option value="mc">選択肢問題（4択）</option>
+          <option value="fill">空欄補充</option>
+          <option value="translation">和文英訳</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1">生成数</label>
+        <select id="ai-count" class="w-full">
+          <option value="3">3問</option>
+          <option value="5" selected>5問</option>
+          <option value="10">10問</option>
+        </select>
+      </div>
+    </div>
+    <button id="ai-generate-btn" onclick="generateAI()" class="btn btn-primary w-full text-base py-3">AIで問題を生成</button>
+    <div id="ai-status" class="mt-3 text-sm hidden"></div>
+  </div>
+
+  <div id="ai-preview" class="hidden card mb-4">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-bold text-emerald-900">生成された問題のプレビュー</h3>
+      <div class="flex gap-2">
+        <button onclick="addAIQuestionsToBank()" class="btn btn-primary text-sm py-2">問題バンクに追加</button>
+        <button onclick="clearAIPreview()" class="btn btn-secondary text-sm py-2">クリア</button>
+      </div>
+    </div>
+    <div id="ai-questions-list"></div>
+  </div>
+
+  <div class="card text-sm text-slate-500">
+    <div class="font-semibold text-slate-700 mb-1">Gemini APIについて</div>
+    <ul class="list-disc ml-4 space-y-1">
+      <li>Google AI Studio（<code class="bg-slate-100 px-1 rounded">aistudio.google.com</code>）で無料のAPIキーを取得できます</li>
+      <li>使用モデル: <code class="bg-slate-100 px-1 rounded">gemini-2.5-flash</code></li>
+      <li>APIキーはブラウザのlocalStorageのみに保存され、外部には送信されません</li>
+      <li>問題バンクに追加した問題は「問題作成タブ」でも出題できます（ページを更新すると消えます）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== TAB: 採点入力 ==================== -->
+<div id="tab-score-content" class="tab-content hidden max-w-4xl mx-auto p-6 no-print">
+  <div class="card mb-4">
+    <h2 class="font-bold text-lg mb-4 text-emerald-900">採点入力</h2>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1" for="score-student">生徒を選択</label>
+        <select id="score-student" class="w-full"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1" for="score-test">テストを選択</label>
+        <select id="score-test" onchange="loadScoreForm()" class="w-full"></select>
+      </div>
+    </div>
+    <button onclick="loadScoreForm()" class="btn btn-primary mb-4">採点フォームを表示</button>
+    <div id="score-form"></div>
+    <div id="score-save-area" class="hidden mt-4">
+      <button onclick="saveScore()" class="btn btn-success w-full text-base py-3">採点結果を保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB: 成績ダッシュボード ==================== -->
+<div id="tab-dashboard-content" class="tab-content hidden max-w-5xl mx-auto p-6 no-print">
+  <div class="card mb-4">
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+      <h2 class="font-bold text-lg text-emerald-900">成績ダッシュボード</h2>
+      <select id="dash-student" onchange="renderDashboard()" class="w-48"></select>
+    </div>
+    <div id="dashboard-content">
+      <p class="text-slate-500 text-sm">生徒を選択してください</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB: 生徒管理 ==================== -->
+<div id="tab-students-content" class="tab-content hidden max-w-2xl mx-auto p-6 no-print">
+  <div class="card mb-4">
+    <h2 class="font-bold text-lg mb-4 text-emerald-900">生徒管理</h2>
+    <div class="flex gap-2 mb-4">
+      <input type="text" id="new-student-name" placeholder="生徒名を入力" class="flex-1">
+      <button onclick="addStudent()" class="btn btn-primary">追加</button>
+    </div>
+    <div id="student-list"></div>
+  </div>
+</div>
+
+<!-- ==================== TAB: 設定 ==================== -->
+<div id="tab-settings-content" class="tab-content hidden max-w-2xl mx-auto p-6 no-print">
+  <div class="card mb-4">
+    <h2 class="font-bold text-lg mb-1 text-emerald-900">Gemini APIキー設定</h2>
+    <p class="text-sm text-slate-500 mb-4">AIによる問題生成に使用します。このキーはブラウザ内のみに保存され、GitHub等に公開されることはありません。</p>
+    <div class="flex gap-2 mb-3">
+      <input type="password" id="api-key-input" placeholder="AIzaSy..." class="flex-1 text-sm font-mono">
+      <button onclick="saveApiKey()" class="btn btn-primary shrink-0">保存</button>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="clearApiKey()" class="btn btn-danger text-sm py-1.5">キーを削除</button>
+      <span id="api-key-status" class="text-sm text-slate-500 self-center"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="font-bold text-lg mb-1 text-emerald-900">データ管理・バックアップ</h2>
+    <p class="text-sm text-slate-500 mb-4">ブラウザのデータ削除でデータが失われることがあります。定期的にバックアップしてください。</p>
+    <div class="flex flex-col gap-3">
+      <div class="p-3 bg-emerald-50 rounded-lg flex items-center justify-between gap-4">
+        <div>
+          <div class="font-semibold text-emerald-900">バックアップを作成</div>
+          <div class="text-xs text-slate-500">生徒・テスト・採点データをJSONファイルに保存</div>
+        </div>
+        <button onclick="exportData()" class="btn btn-primary shrink-0">エクスポート</button>
+      </div>
+      <div class="p-3 bg-slate-50 rounded-lg flex items-center justify-between gap-4">
+        <div>
+          <div class="font-semibold text-slate-700">バックアップから復元</div>
+          <div class="text-xs text-slate-500">以前のエクスポートファイルを読み込む（現在のデータは上書き）</div>
+        </div>
+        <label class="btn btn-outline cursor-pointer shrink-0">
+          インポート
+          <input type="file" accept=".json" onchange="importData(event)" class="hidden">
+        </label>
+      </div>
+      <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div class="font-semibold text-red-700 mb-1">全データ削除</div>
+        <div class="text-xs text-red-600 mb-2">生徒・テスト・採点データがすべて削除されます。この操作は取り消せません。</div>
+        <label class="flex items-center gap-2 text-sm text-red-700 mb-2 cursor-pointer select-none">
+          <input type="checkbox" id="delete-confirm-check" onchange="toggleDeleteBtn()" class="w-4 h-4">
+          バックアップを作成済みであることを確認しました
+        </label>
+        <button id="delete-all-btn" onclick="clearAllData()" class="btn btn-danger w-full opacity-40 cursor-not-allowed" disabled>全削除を実行する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== カリキュラム定義 ====================
+const CURRICULUM = {
+  grammar: [
+    { id: "gram_basic",       name: "文の5文型・品詞" },
+    { id: "gram_tense",       name: "時制（現在・過去・未来・進行形）" },
+    { id: "gram_perfect",     name: "現在完了・過去完了" },
+    { id: "gram_modal",       name: "助動詞" },
+    { id: "gram_infinitive",  name: "不定詞" },
+    { id: "gram_gerund",      name: "動名詞" },
+    { id: "gram_participle",  name: "分詞・分詞構文" },
+    { id: "gram_relative",    name: "関係代名詞・関係副詞" },
+    { id: "gram_passive",     name: "受動態" },
+    { id: "gram_comparison",  name: "比較（原級・比較級・最上級）" },
+    { id: "gram_conjunction", name: "接続詞・前置詞" },
+    { id: "gram_subjunctive", name: "仮定法" },
+  ],
+  vocab: [
+    { id: "voc_1", name: "語彙 Lesson 1-3" },
+    { id: "voc_2", name: "語彙 Lesson 4-6" },
+    { id: "voc_3", name: "語彙 Lesson 7-9" },
+    { id: "voc_4", name: "語彙 Lesson 10-12" },
+  ]
+};
+
+// ==================== 状態 ====================
+let currentQuiz = null;
+let selectedUnits = new Set();
+let aiGeneratedQuestions = [];
+let pendingAIQuestions = [];
+
+// ==================== ストレージ ====================
+const PFX = 'hien_';
+function getStorage(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(PFX + key)) ?? fallback; }
+  catch { return fallback; }
+}
+function setStorage(key, val) { localStorage.setItem(PFX + key, JSON.stringify(val)); }
+
+// ==================== ユーティリティ ====================
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function getAllUnits() {
+  return [...CURRICULUM.grammar, ...CURRICULUM.vocab];
+}
+
+// ==================== タブ管理 ====================
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(`tab-${name}-content`).classList.remove('hidden');
+  document.getElementById(`tab-${name}`).classList.add('active');
+
+  if (name === 'score') refreshScoreSelects();
+  if (name === 'dashboard') refreshDashboardSelects();
+  if (name === 'students') renderStudentList();
+  if (name === 'generate') refreshWeakStudentSelect();
+  if (name === 'ai') initAITab();
+  if (name === 'settings') initSettingsTab();
+}
+
+// ==================== 単元選択 UI ====================
+function updateUnitList() {
+  selectedUnits.clear();
+  getAllUnits().forEach(u => selectedUnits.add(u.id));
+
+  const container = document.getElementById('unit-list');
+  container.innerHTML = '';
+
+  const addSection = (units, catLabel, catKey) => {
+    if (!units || units.length === 0) return;
+    const label = document.createElement('div');
+    label.className = 'cat-label mt-2';
+    label.textContent = catLabel;
+    container.appendChild(label);
+
+    const row = document.createElement('div');
+    row.className = 'flex flex-wrap gap-2 mb-1';
+    units.forEach(u => {
+      const chip = document.createElement('span');
+      chip.className = 'unit-chip selected';
+      chip.dataset.id = u.id;
+      chip.dataset.cat = catKey;
+      chip.textContent = u.name;
+      chip.onclick = () => toggleUnit(u.id, chip);
+      row.appendChild(chip);
+    });
+    container.appendChild(row);
+  };
+
+  addSection(CURRICULUM.grammar, '文法', 'grammar');
+  addSection(CURRICULUM.vocab, '語彙', 'vocab');
+}
+
+function toggleUnit(id, el) {
+  if (selectedUnits.has(id)) { selectedUnits.delete(id); el.classList.remove('selected'); }
+  else { selectedUnits.add(id); el.classList.add('selected'); }
+}
+function selectAllUnits() {
+  document.querySelectorAll('.unit-chip').forEach(el => {
+    selectedUnits.add(el.dataset.id); el.classList.add('selected');
+  });
+}
+function clearAllUnits() {
+  selectedUnits.clear();
+  document.querySelectorAll('.unit-chip').forEach(el => el.classList.remove('selected'));
+}
+function selectByCat(cat) {
+  clearAllUnits();
+  document.querySelectorAll(`.unit-chip[data-cat="${cat}"]`).forEach(el => {
+    selectedUnits.add(el.dataset.id); el.classList.add('selected');
+  });
+}
+
+// ==================== 弱点モード ====================
+function refreshWeakStudentSelect() {
+  const students = getStorage('students', []);
+  const el = document.getElementById('weak-student-sel');
+  if (!el) return;
+  el.innerHTML = '<option value="">-- 生徒を選択 --</option>' +
+    students.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+}
+function toggleWeakMode() {
+  const on = document.getElementById('weak-mode-toggle').checked;
+  document.getElementById('weak-student-area').classList.toggle('hidden', !on);
+  if (!on) { selectAllUnits(); document.getElementById('weak-units-info').classList.add('hidden'); }
+}
+function applyWeakUnits() {
+  const studentId = document.getElementById('weak-student-sel').value;
+  const info = document.getElementById('weak-units-info');
+  if (!studentId) return;
+  const scores = getStorage('scores', []).filter(s => s.studentId === studentId);
+  if (scores.length === 0) {
+    info.textContent = '※ この生徒の採点データがまだありません。';
+    info.className = 'text-sm p-2 rounded bg-white border border-orange-200 text-orange-700';
+    info.classList.remove('hidden'); return;
+  }
+  const unitStats = {};
+  scores.forEach(sc => (sc.results || []).forEach(r => {
+    const key = r.unitId || r.unit;
+    if (!key) return;
+    if (!unitStats[key]) unitStats[key] = { correct: 0, total: 0 };
+    unitStats[key].total++;
+    if (r.result === 'correct') unitStats[key].correct++;
+  }));
+  const weakKeys = Object.entries(unitStats)
+    .filter(([, s]) => s.total > 0 && s.correct / s.total < 0.6)
+    .map(([key]) => key);
+  if (weakKeys.length === 0) {
+    info.innerHTML = '弱点単元（60%未満）はありません。全単元60%以上です！';
+    info.className = 'text-sm p-2 rounded bg-green-50 border border-green-200 text-green-700';
+    info.classList.remove('hidden'); clearAllUnits(); return;
+  }
+  const allUnits = getAllUnits();
+  selectedUnits.clear();
+  allUnits.forEach(u => {
+    if (weakKeys.includes(u.id) || weakKeys.includes(u.name)) selectedUnits.add(u.id);
+  });
+  document.querySelectorAll('.unit-chip').forEach(chip => {
+    chip.classList.toggle('selected', selectedUnits.has(chip.dataset.id));
+  });
+  const weakNames = allUnits.filter(u => selectedUnits.has(u.id)).map(u => u.name);
+  info.innerHTML = `弱点単元 ${weakNames.length}件を選択：${weakNames.map(n => `<strong>${escHtml(n)}</strong>`).join('、')}`;
+  info.className = 'text-sm p-2 rounded bg-white border border-orange-200 text-orange-700';
+  info.classList.remove('hidden');
+}
+
+// ==================== 問題生成 ====================
+function getActiveTypes() {
+  const types = [];
+  if (document.getElementById('type-mc')?.checked) types.push('mc');
+  if (document.getElementById('type-spell')?.checked) types.push('spell');
+  if (document.getElementById('type-fill')?.checked) types.push('fill', 'translation');
+  return types;
+}
+
+function generateQuiz() {
+  if (selectedUnits.size === 0) { alert('少なくとも1つの単元を選択してください。'); return; }
+  const diffValue = parseInt(document.getElementById('sel-difficulty').value);
+  const count = parseInt(document.getElementById('sel-count').value);
+  const types = getActiveTypes();
+  if (types.length === 0) { alert('少なくとも1つの問題タイプを選択してください。'); return; }
+
+  const allUnits = getAllUnits();
+  const units = allUnits.filter(u => selectedUnits.has(u.id));
+  const unitIds = new Set(units.map(u => u.id));
+
+  // 問題バンク（組み込み＋AI生成済み）
+  const bank = [...QUESTION_BANK, ...aiGeneratedQuestions];
+
+  let pool = bank.filter(q => unitIds.has(q.unit) && types.includes(q.type) &&
+    (diffValue === 0 || Math.abs(q.diff - diffValue) <= 1));
+  if (pool.length < count && diffValue !== 0) pool = bank.filter(q => unitIds.has(q.unit) && types.includes(q.type));
+  if (pool.length === 0) {
+    alert('選択した条件に一致する問題がありません。\n単元・タイプ・難易度を変更してください。');
+    return;
+  }
+
+  const picked = shuffleArray(pool).slice(0, count);
+  const errEl = document.getElementById('gen-error');
+  if (picked.length < count) {
+    errEl.textContent = `問題プールが不足（${picked.length}問のみ生成）。単元追加かAI生成で補充してください。`;
+    errEl.classList.remove('hidden');
+  } else {
+    errEl.classList.add('hidden');
+  }
+
+  const questions = picked.map((raw, i) => {
+    const unitObj = units.find(u => u.id === raw.unit);
+    const unitName = unitObj?.name || raw.unit;
+    if (raw.type === 'spell') {
+      return {
+        no: i + 1, type: 'spell', unit: unitName, unitId: raw.unit,
+        question: `次の日本語に合う英単語を書け：「${raw.meaning}」`,
+        answer: raw.word, explanation: raw.exp
+      };
+    }
+    if (raw.type === 'fill' || raw.type === 'translation') {
+      return {
+        no: i + 1, type: 'fill', unit: unitName, unitId: raw.unit,
+        question: raw.q, answer: raw.c[0], explanation: raw.exp
+      };
+    }
+    // mc
+    const correctText = raw.c[0];
+    const shuffledChoices = shuffleArray([...raw.c]);
+    const labels = ['ア','イ','ウ','エ'];
+    const labeledChoices = shuffledChoices.map((c, idx) => `${labels[idx]}. ${c}`);
+    const answerLabel = labeledChoices[shuffledChoices.indexOf(correctText)];
+    return {
+      no: i + 1, type: 'mc', unit: unitName, unitId: raw.unit,
+      question: raw.q, choices: labeledChoices, answer: answerLabel, explanation: raw.exp
+    };
+  });
+
+  const titleInput = document.getElementById('test-title').value.trim();
+  const diffLabel = { 0:'全難易度', 1:'基礎', 2:'標準', 3:'発展' }[diffValue] || '標準';
+  currentQuiz = {
+    id: Date.now().toString(),
+    title: titleInput || `高校英語 ${diffLabel} 小テスト`,
+    diffValue,
+    units: units.map(u => u.name),
+    createdAt: new Date().toISOString(),
+    questions
+  };
+
+  renderPreview(currentQuiz);
+  document.getElementById('preview-area').classList.remove('hidden');
+  document.getElementById('preview-area').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ==================== プレビュー描画 ====================
+function renderPreview(quiz) {
+  document.getElementById('ps-title').textContent = quiz.title;
+  document.getElementById('ps-max').textContent = quiz.questions.length;
+  document.getElementById('as-title').textContent = quiz.title + '【解答・解説】';
+  document.getElementById('ps-meta').textContent =
+    `出題範囲：${quiz.units.join('、')}　（全${quiz.questions.length}問）`;
+  document.getElementById('as-meta').textContent =
+    `出題範囲：${quiz.units.join('、')}`;
+
+  const psQ = document.getElementById('ps-questions');
+  psQ.innerHTML = '';
+  quiz.questions.forEach(q => {
+    const block = document.createElement('div');
+    block.className = 'question-block';
+    let inner = `<div class="unit-label">${escHtml(q.unit)}</div>
+      <div class="question-text">${q.no}. ${escHtml(q.question)}</div>`;
+    if (q.type === 'mc') {
+      inner += `<div class="choices">${q.choices.map(c => `<div>${escHtml(c)}</div>`).join('')}</div>
+        <div style="margin-top:4px;font-size:9pt;">答え：<span class="answer-line"></span></div>`;
+    } else if (q.type === 'spell') {
+      inner += `<div style="margin-top:4px;font-size:9pt;">答え：<span class="answer-line" style="width:120px;"></span></div>`;
+    } else if (q.type === 'fill') {
+      inner += `<div style="margin-top:4px;font-size:9pt;">（　　　　　　　　　　　　　）</div>`;
+    }
+    block.innerHTML = inner;
+    psQ.appendChild(block);
+  });
+
+  const asA = document.getElementById('as-answers');
+  asA.innerHTML = '';
+  quiz.questions.forEach(q => {
+    const item = document.createElement('div');
+    item.className = 'answer-item';
+    item.innerHTML = `
+      <div style="font-size:10pt;"><strong>${q.no}.</strong> 【${escHtml(q.unit)}】　<span class="ans">【答】${escHtml(q.answer)}</span></div>
+      <div class="exp">【解説】${escHtml(q.explanation)}</div>`;
+    asA.appendChild(item);
+  });
+}
+
+// ==================== 印刷 ====================
+function printProblems() {
+  if (!currentQuiz) { alert('先に問題を生成してください。'); return; }
+  document.getElementById('answer-sheet').style.display = 'none';
+  window.print();
+  document.getElementById('answer-sheet').style.display = '';
+}
+function printAnswers() {
+  if (!currentQuiz) { alert('先に問題を生成してください。'); return; }
+  document.getElementById('problem-sheet').style.display = 'none';
+  document.getElementById('answer-sheet').style.display = 'block';
+  window.addEventListener('afterprint', () => {
+    document.getElementById('problem-sheet').style.display = '';
+    document.getElementById('answer-sheet').style.display = '';
+  }, { once: true });
+  window.print();
+}
+
+// ==================== テスト保存 ====================
+function saveCurrentTest() {
+  if (!currentQuiz) return;
+  const tests = getStorage('tests', []);
+  const idx = tests.findIndex(t => t.id === currentQuiz.id);
+  if (idx >= 0) tests[idx] = currentQuiz; else tests.push(currentQuiz);
+  setStorage('tests', tests);
+  alert(`「${currentQuiz.title}」を保存しました。\n採点タブから採点を入力できます。`);
+}
+
+// ==================== AI問題生成 ====================
+function initAITab() {
+  const key = getStorage('gemini_key', '');
+  document.getElementById('ai-no-key').classList.toggle('hidden', !!key);
+
+  const sel = document.getElementById('ai-unit');
+  sel.innerHTML = '<option value="">-- 単元を選択 --</option>';
+  getAllUnits().forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.id;
+    opt.textContent = u.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function generateAI() {
+  const key = getStorage('gemini_key', '');
+  if (!key) { alert('設定タブでGemini APIキーを入力してください。'); showTab('settings'); return; }
+  const unitId = document.getElementById('ai-unit').value;
+  const unit = getAllUnits().find(u => u.id === unitId);
+  if (!unit) { alert('単元を選択してください。'); return; }
+
+  const diff = parseInt(document.getElementById('ai-diff').value);
+  const type = document.getElementById('ai-type').value;
+  const count = parseInt(document.getElementById('ai-count').value);
+  const diffLabel = { 1:'基礎', 2:'標準', 3:'発展' }[diff];
+  const typeLabel = { mc:'4択選択肢', fill:'空欄補充', translation:'和文英訳' }[type];
+
+  const prompt = `あなたは高校英語の問題作成の専門家です。
+以下の条件で高校英語の問題を${count}問作成してください。
+
+単元: ${unit.name}
+難易度: ${diffLabel}
+問題タイプ: ${typeLabel}
+
+必ず以下のJSON配列形式で回答してください（コードブロックなし、JSONのみ）:
+[
+  {
+    "q": "問題文（日本語または英語）",
+    "c": ["正解", "誤答1", "誤答2", "誤答3"],
+    "exp": "解説（なぜその答えか、文法的根拠も含めて）"
+  }
+]
+
+注意点:
+- cの最初の要素(c[0])が必ず正解
+- 問題は高校生レベルで実際の入試に出るような本格的なもの
+- 解説は文法用語を使いわかりやすく
+- 問題タイプが空欄補充の場合は問題文に（　）を使い、cには入る語句を記載
+- 問題タイプが和文英訳の場合はqに日本語文、c[0]に英語解答、残りに典型的な誤答
+- 重複しない${count}問を作成`;
+
+  const btn = document.getElementById('ai-generate-btn');
+  const status = document.getElementById('ai-status');
+  btn.innerHTML = '<span class="spinner"></span>生成中...';
+  btn.classList.add('ai-generating');
+  status.textContent = 'Gemini APIに接続中...';
+  status.className = 'mt-3 text-sm text-slate-500';
+  status.classList.remove('hidden');
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
+        })
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    let parsed;
+    try {
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    } catch {
+      throw new Error('AIの回答をJSONとして解析できませんでした。再度お試しください。');
+    }
+
+    const newQuestions = parsed.map(q => ({
+      unit: unitId, diff, type: type === 'translation' ? 'fill' : type,
+      q: q.q, c: Array.isArray(q.c) ? q.c : [q.c], exp: q.exp || '',
+      source: 'ai'
+    }));
+
+    renderAIPreview(newQuestions, unit.name);
+    status.textContent = `${newQuestions.length}問を生成しました。`;
+    status.className = 'mt-3 text-sm text-green-600';
+  } catch (e) {
+    status.textContent = `エラー: ${e.message}`;
+    status.className = 'mt-3 text-sm text-red-600';
+  } finally {
+    btn.innerHTML = 'AIで問題を生成';
+    btn.classList.remove('ai-generating');
+  }
+}
+
+function renderAIPreview(questions, unitName) {
+  const container = document.getElementById('ai-questions-list');
+  container.innerHTML = '';
+  questions.forEach((q, i) => {
+    const div = document.createElement('div');
+    div.className = 'mb-4 p-4 bg-emerald-50 rounded-lg border border-emerald-200';
+    const choicesHtml = Array.isArray(q.c)
+      ? q.c.map((c, idx) => `<div class="text-sm text-slate-600">${['ア','イ','ウ','エ'][idx]}. ${escHtml(c)}</div>`).join('')
+      : '';
+    div.innerHTML = `
+      <div class="text-xs font-bold text-emerald-700 mb-1">${i+1}. ${escHtml(unitName)}【AI生成】</div>
+      <div class="font-semibold mb-2">${escHtml(q.q)}</div>
+      ${choicesHtml}
+      <div class="mt-2 text-sm text-emerald-800"><strong>答：</strong>${escHtml(q.c[0])}</div>
+      <div class="mt-1 text-xs text-slate-500">${escHtml(q.exp)}</div>`;
+    container.appendChild(div);
+  });
+  pendingAIQuestions = questions;
+  document.getElementById('ai-preview').classList.remove('hidden');
+}
+
+function addAIQuestionsToBank() {
+  const qs = pendingAIQuestions;
+  if (qs.length === 0) return;
+  aiGeneratedQuestions.push(...qs);
+  alert(`${qs.length}問を問題バンクに追加しました。\n「問題作成」タブで出題できます（ページを更新するまで有効）。`);
+  clearAIPreview();
+}
+
+function clearAIPreview() {
+  pendingAIQuestions = [];
+  document.getElementById('ai-preview').classList.add('hidden');
+  document.getElementById('ai-questions-list').innerHTML = '';
+  document.getElementById('ai-status').classList.add('hidden');
+}
+
+// ==================== 設定タブ ====================
+function initSettingsTab() {
+  const key = getStorage('gemini_key', '');
+  const input = document.getElementById('api-key-input');
+  if (key) {
+    input.value = key.slice(0, 8) + '...';
+    document.getElementById('api-key-status').textContent = 'APIキーが設定されています';
+  } else {
+    input.value = '';
+    document.getElementById('api-key-status').textContent = '未設定';
+  }
+}
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val || val.endsWith('...')) { alert('有効なAPIキーを入力してください。'); return; }
+  setStorage('gemini_key', val);
+  document.getElementById('api-key-status').textContent = 'APIキーが設定されています';
+  document.getElementById('api-key-input').value = val.slice(0, 8) + '...';
+  alert('APIキーを保存しました。');
+}
+function clearApiKey() {
+  if (!confirm('APIキーを削除しますか？')) return;
+  localStorage.removeItem(PFX + 'gemini_key');
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('api-key-status').textContent = '未設定';
+}
+
+// ==================== 生徒管理 ====================
+function addStudent() {
+  const name = document.getElementById('new-student-name').value.trim();
+  if (!name) return;
+  const students = getStorage('students', []);
+  if (students.find(s => s.name === name)) { alert('同じ名前の生徒がすでに存在します。'); return; }
+  students.push({ id: Date.now().toString(), name });
+  setStorage('students', students);
+  document.getElementById('new-student-name').value = '';
+  renderStudentList();
+}
+function deleteStudent(id) {
+  if (!confirm('この生徒のデータを削除しますか？')) return;
+  setStorage('students', getStorage('students', []).filter(s => s.id !== id));
+  renderStudentList();
+}
+function renderStudentList() {
+  const students = getStorage('students', []);
+  const container = document.getElementById('student-list');
+  if (students.length === 0) {
+    container.innerHTML = '<p class="text-slate-400 text-sm">生徒が登録されていません</p>'; return;
+  }
+  container.innerHTML = students.map(s => `
+    <div class="student-row flex justify-between items-center py-2 px-3 rounded-lg">
+      <span>${escHtml(s.name)}</span>
+      <button onclick="deleteStudent('${s.id}')" class="text-red-500 text-sm hover:underline">削除</button>
+    </div>`).join('');
+}
+
+// ==================== 採点入力 ====================
+function refreshScoreSelects() {
+  const students = getStorage('students', []);
+  const tests = getStorage('tests', []);
+  document.getElementById('score-student').innerHTML = students.length === 0
+    ? '<option value="">生徒を登録してください</option>'
+    : students.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+  document.getElementById('score-test').innerHTML = tests.length === 0
+    ? '<option value="">テストを保存してください</option>'
+    : tests.map(t => `<option value="${t.id}">${escHtml(t.title)} (${t.questions.length}問)</option>`).join('');
+}
+function loadScoreForm() {
+  const testId = document.getElementById('score-test').value;
+  const test = getStorage('tests', []).find(t => t.id === testId);
+  if (!test) return;
+  document.getElementById('score-form').innerHTML = `
+    <div class="mb-3 text-sm font-semibold text-slate-600">${escHtml(test.title)} — 各問の正誤を入力</div>
+    <div class="space-y-2">
+      ${test.questions.map(q => `
+        <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg flex-wrap sm:flex-nowrap">
+          <span class="text-sm font-bold w-8 shrink-0">問${q.no}</span>
+          <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full shrink-0">${escHtml(q.unit)}</span>
+          <span class="flex-1 text-sm text-slate-600 truncate min-w-0">${escHtml((q.question || '').substring(0, 40))}…</span>
+          <label class="flex items-center gap-1 cursor-pointer shrink-0">
+            <input type="radio" name="q${q.no}" value="correct" class="accent-green-600"> <span class="text-green-700 font-bold">○</span>
+          </label>
+          <label class="flex items-center gap-1 cursor-pointer shrink-0">
+            <input type="radio" name="q${q.no}" value="wrong" class="accent-red-600"> <span class="text-red-700 font-bold">×</span>
+          </label>
+          <label class="flex items-center gap-1 cursor-pointer shrink-0">
+            <input type="radio" name="q${q.no}" value="partial" class="accent-yellow-500"> <span class="text-yellow-600 font-bold">△</span>
+          </label>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('score-save-area').classList.remove('hidden');
+}
+function saveScore() {
+  const studentId = document.getElementById('score-student').value;
+  const testId = document.getElementById('score-test').value;
+  if (!studentId || !testId) { alert('生徒とテストを選択してください。'); return; }
+  const test = getStorage('tests', []).find(t => t.id === testId);
+  if (!test) { alert('テストデータが見つかりません。'); return; }
+  const results = test.questions.map(q => {
+    const el = document.querySelector(`input[name="q${q.no}"]:checked`);
+    return { no: q.no, unit: q.unit, unitId: q.unitId ?? null, type: q.type, result: el ? el.value : 'wrong' };
+  });
+  const scores = getStorage('scores', []);
+  scores.push({
+    id: Date.now().toString(), studentId, testId,
+    testTitle: test.title, date: new Date().toISOString(), results
+  });
+  setStorage('scores', scores);
+  const correct = results.filter(r => r.result === 'correct').length;
+  const partial = results.filter(r => r.result === 'partial').length;
+  alert(`採点を保存しました。\n正解：${correct}問 / 部分点：${partial}問 / 全${results.length}問`);
+  document.getElementById('score-form').innerHTML = '';
+  document.getElementById('score-save-area').classList.add('hidden');
+}
+
+// ==================== 成績ダッシュボード ====================
+function refreshDashboardSelects() {
+  const students = getStorage('students', []);
+  const el = document.getElementById('dash-student');
+  el.innerHTML = '<option value="">生徒を選択...</option>' +
+    students.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+  renderDashboard();
+}
+function renderDashboard() {
+  const studentId = document.getElementById('dash-student').value;
+  const container = document.getElementById('dashboard-content');
+  if (!studentId) { container.innerHTML = '<p class="text-slate-500 text-sm">生徒を選択してください</p>'; return; }
+  const student = getStorage('students', []).find(s => s.id === studentId);
+  if (!student) return;
+  const scores = getStorage('scores', []).filter(s => s.studentId === studentId);
+  const unitStats = {};
+  scores.forEach(sc => sc.results.forEach(r => {
+    if (!unitStats[r.unit]) unitStats[r.unit] = { correct: 0, total: 0 };
+    unitStats[r.unit].total++;
+    if (r.result === 'correct') unitStats[r.unit].correct++;
+  }));
+  const units = Object.entries(unitStats).map(([unit, s]) => ({
+    unit, rate: s.correct / s.total, correct: s.correct, total: s.total
+  })).sort((a, b) => a.rate - b.rate);
+  const weakUnits = units.filter(u => u.rate < 0.6);
+  const totalCorrect = scores.reduce((s, sc) => s + sc.results.filter(r => r.result === 'correct').length, 0);
+  const totalQ = scores.reduce((s, sc) => s + sc.results.length, 0);
+
+  container.innerHTML = `
+    <div class="mb-4 p-4 bg-emerald-50 rounded-lg">
+      <div class="font-bold text-emerald-900 mb-1">${escHtml(student.name)} さん</div>
+      <div class="text-sm text-slate-600">受験テスト数：${scores.length}回　総問題数：${totalQ}問　総正答率：${totalQ > 0 ? Math.round(totalCorrect/totalQ*100) : '---'}%</div>
+    </div>
+    ${scores.length === 0 ? '<div class="p-4 bg-slate-50 rounded-lg text-slate-500 text-sm mb-4">採点データがまだありません。</div>' :
+      weakUnits.length > 0 ? `<div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div class="font-bold text-red-800 mb-2">要注意単元（正答率60%未満）</div>
+        ${weakUnits.map(u => `<div class="flex items-center gap-3 mb-1">
+          <span class="text-sm w-52 text-red-700">${escHtml(u.unit)}</span>
+          <div class="flex-1 weak-bar"><div class="weak-bar-fill" style="width:${Math.round(u.rate*100)}%;background:${u.rate<0.4?'#dc2626':'#f97316'}"></div></div>
+          <span class="text-sm font-bold text-red-700 w-12 text-right">${Math.round(u.rate*100)}%</span>
+          <span class="text-xs text-slate-500">${u.correct}/${u.total}問</span>
+        </div>`).join('')}
+      </div>` : '<div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 font-bold">全単元60%以上の正答率です！</div>'}
+    ${units.length > 0 ? `<div class="mb-4">
+      <div class="font-bold text-slate-700 mb-2">全単元の正答率</div>
+      ${units.sort((a,b) => a.unit.localeCompare(b.unit,'ja')).map(u => `
+        <div class="flex items-center gap-3 mb-1">
+          <span class="text-sm w-52">${escHtml(u.unit)}</span>
+          <div class="flex-1 weak-bar"><div class="weak-bar-fill" style="width:${Math.round(u.rate*100)}%;background:${u.rate>=0.8?'#059669':u.rate>=0.6?'#0891b2':u.rate>=0.4?'#f97316':'#dc2626'}"></div></div>
+          <span class="text-sm font-bold w-12 text-right">${Math.round(u.rate*100)}%</span>
+          <span class="text-xs text-slate-500">${u.correct}/${u.total}問</span>
+        </div>`).join('')}
+    </div>` : ''}
+    <div>
+      <div class="font-bold text-slate-700 mb-2">受験履歴</div>
+      ${scores.length === 0 ? '<p class="text-slate-400 text-sm">受験履歴がありません</p>' :
+        `<div class="space-y-2">${scores.slice().reverse().map(sc => {
+          const c = sc.results.filter(r => r.result === 'correct').length;
+          return `<div class="flex justify-between items-center p-2 bg-slate-50 rounded text-sm">
+            <span>${escHtml(sc.testTitle)}</span>
+            <span class="text-slate-500">${sc.date.slice(0,10)}</span>
+            <span class="font-bold">${c}問正解 / ${sc.results.length}問</span>
+          </div>`;
+        }).join('')}</div>`}
+    </div>`;
+}
+
+// ==================== 設定・バックアップ ====================
+function toggleDeleteBtn() {
+  const checked = document.getElementById('delete-confirm-check').checked;
+  const btn = document.getElementById('delete-all-btn');
+  btn.disabled = !checked;
+  btn.classList.toggle('opacity-40', !checked);
+  btn.classList.toggle('cursor-not-allowed', !checked);
+}
+function exportData() {
+  const data = {
+    students: getStorage('students', []),
+    tests: getStorage('tests', []),
+    scores: getStorage('scores', []),
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `高校英語_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!confirm('現在のデータを上書きしてインポートしますか？')) return;
+      if (data.students) setStorage('students', data.students);
+      if (data.tests) setStorage('tests', data.tests);
+      if (data.scores) setStorage('scores', data.scores);
+      alert('データをインポートしました。');
+    } catch { alert('ファイルの読み込みに失敗しました。'); }
+  };
+  reader.readAsText(file);
+}
+function clearAllData() {
+  if (!document.getElementById('delete-confirm-check').checked) return;
+  ['students','tests','scores'].forEach(k => localStorage.removeItem(PFX + k));
+  alert('全データを削除しました。');
+  document.getElementById('delete-confirm-check').checked = false;
+  toggleDeleteBtn();
+}
+
+// ==================== 初期化 ====================
+updateUnitList();
+showTab('generate');
+</script>
+</body>
+</html>
